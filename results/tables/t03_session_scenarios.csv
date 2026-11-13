@@ -1,0 +1,4 @@
+case,t_amb_C,duration_min,reference_min,slowdown,mean_power_kW,energy_kWh,t_cab_start,t_cab_end,t_bat_start,t_bat_end
+Typical TMY day (39 degC peak),38.63,27.17,27.00,1.01,109.33,49.50,42.63,52.73,43.63,38.01
+"Heatwave (+6 K, 45 degC peak)",44.63,37.00,27.00,1.37,80.27,49.50,48.63,56.62,49.63,44.06
+Heatwave + canopy,42.13,30.83,27.00,1.14,96.32,49.50,46.13,53.80,47.13,41.55

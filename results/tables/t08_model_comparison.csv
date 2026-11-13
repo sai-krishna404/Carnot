@@ -1,0 +1,4 @@
+model,rmse_K,max_abs_K
+Physics only (calibrated),0.335,0.936
+Grey-box (+ ridge residual),0.353,0.993
+Polynomial black box (deg 3),4.936,13.515

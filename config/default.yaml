@@ -1,0 +1,156 @@
+# =====================================================================
+# Carnot - grey-box model of heat-induced DC fast-charging derating
+# and queueing in Abu Dhabi / Dubai
+#
+# All SI-consistent engineering units unless stated:
+#   temperatures        degC (Kelvin internally where radiation is used)
+#   power               kW
+#   energy              kWh
+#   heat capacity       kJ/K   (so dT/dt [K/s] = Q[kW] / C[kJ/K])
+#   thermal conductance kW/K or K/W
+#   time                s
+#
+# Every parameter below is tagged with its provenance:
+#   [L] literature / manufacturer typical value  (see report/references.md)
+#   [C] calibrated by this study (bounds given in calibration section)
+#   [A] modelling assumption, tested in sensitivity analysis
+# =====================================================================
+
+meta:
+  project: Carnot
+  version: "1.0.0"
+  seed: 20260713
+
+paths:
+  raw_tmy: data/raw/pvgis_tmy_abu_dhabi.csv
+  processed_dir: data/processed
+  results_dir: results
+  figures_dir: results/figures
+  tables_dir: results/tables
+
+climate:
+  latitude_deg: 24.454        # PVGIS site metadata
+  longitude_deg: 54.377
+  elevation_m: 5.0
+  utc_offset_h: 4             # Gulf Standard Time, no DST
+  # "hottest_july" = the July day with the highest daily mean T2m in the TMY,
+  # representing a typical extreme summer day. Override with ISO date string.
+  design_day: hottest_july
+  heatwave_delta_K: 0.0       # +K applied on top of the design day (stress test)
+  albedo_ground: 0.20         # [L] asphalt/concrete 0.1-0.3
+
+site:
+  n_stalls: 4                 # [A] typical hub size
+  stall_rating_kw: 150.0      # [L] 150 kW DC fast charger
+  # Physical intervention -------------------------------------------------
+  canopy: false               # reflective solar canopy over the stalls
+  canopy_transmission: 0.10   # [L] fraction of GHI reaching charger/car under canopy
+  canopy_delta_T_K: 2.5       # [L] air-temperature reduction in the shaded zone
+  alpha_cabinet: 0.30         # [L] solar absorptance of the cabinet skin (light grey)
+  coating_alpha_cabinet: 0.12 # [L] white/reflective coating variant
+
+cabinet:
+  # Lumped thermal node = power-electronics enclosure + heat sink mass
+  C_kJ_per_K: 180.0           # [L] ~350 kg steel/Al at ~500 J/kg/K
+  area_m2: 6.0                # [L] effective external area of a 1.6x0.8x2.0 m cabinet
+  emissivity: 0.85            # [L] painted steel
+  UA_conv_natural_W_per_K: 45.0   # [C] natural convection, h~7.5 W/m2K
+  fan_ua_ratio: 6.0           # [C] forced/natural conductance ratio at full fan
+  T_fan_on_C: 38.0            # [A] thermostat that ramps the fans
+  fan_width_K: 3.0            # [A] smoothness of the fan ramp
+  k_wind_W_per_K: 8.0         # [C] wind-driven convection coefficient at 1 m/s
+  wind_exponent: 0.8          # [L] Dittus-Boelter / flat-plate forced convection
+  eta_peak: 0.965             # [L] SiC converter peak efficiency
+  eta_partload_penalty: 0.05  # [C] efficiency loss at zero load
+  aux_kW: 0.6                 # [L] fans, pumps, contactor, screen
+  T_max_design_C: 85.0        # [L] component design limit
+  derate:
+    T1_C: 58.0                # [C] onset of power-electronics derating
+    T2_C: 78.0                # [C] full derating reached
+    floor: 0.50               # [L] minimum power fraction (50 %)
+    kappa: 30.0               # smoothness of the smooth-clamp (1/K)
+
+battery:
+  capacity_kWh: 90.0          # [L] typical 2024-26 long-range pack
+  nominal_V: 400.0            # [L] 400 V class pack (I = P/V)
+  C_kJ_per_K: 450.0           # [L] ~450 kg pack at ~1000 J/kg/K
+  R0_ohm: 0.060               # [C] DC internal resistance at 25 degC, SoC 0.5
+  R_soc_slope: 0.30           # [L] resistance rises as SoC falls
+  Ea_kJ_per_mol: 12.0         # [L] Arrhenius activation energy of R_int
+  passive_R_th_K_per_W: 0.10  # [C] conduction/convection to ambient when parked (~100 W at 10 K)
+  chiller_setpoint_C: 30.0    # [L] coolant loop set point
+  chiller_R_th_K_per_W: 0.008 # [C] pack-to-coolant resistance
+  chiller_on_margin_K: 1.0
+  chiller_kW_at_35C: 6.0      # [C] max cooling at 35 degC ambient
+  chiller_degradation_per_K: 0.040  # [L] condenser capacity loss per K above 35
+  chiller_ref_ambient_C: 35.0
+  solar_gain_kW_per_1000_Wm2: 0.15  # [A] glazing/floor solar leakage to pack
+  T_arrival_offset_K: 5.0     # [L] pack warmer than air after a drive
+  derate:
+    T1_C: 40.0                # [C] BMS fast-charge derating onset
+    T2_C: 52.0                # [C] full derating
+    floor: 0.30               # [L] hard BMS limit (70 % reduction)
+    kappa: 30.0
+  soc_taper_start: 0.55       # [L] constant-power -> constant-voltage transition
+  taper_exponent: 1.5
+
+vehicle:
+  peak_kW: 150.0              # [L] vehicle can accept the full stall rating
+
+session:
+  target_soc: 0.80            # [L] industry norm for DC fast charging
+  soc_init_mean: 0.25         # [L]
+  soc_init_sd: 0.07
+  soc_init_min: 0.08
+  soc_init_max: 0.45
+  plugin_overhead_s: 120.0    # [A] payment, cable, handshake
+  max_duration_s: 10800.0
+
+queue:
+  n_stalls: 4
+  sessions_per_day: 120       # [A] mixed-use urban hub (taxi/fleet + retail)
+  profile_weights:            # relative arrival intensity by clock hour 0..23
+    [0.20, 0.12, 0.08, 0.06, 0.06, 0.10,
+     0.35, 0.60, 0.75, 0.85, 0.95, 1.10,
+     1.35, 1.60, 1.70, 1.60, 1.45, 1.55,
+     1.80, 1.90, 1.60, 1.10, 0.60, 0.30]
+  patience_mean_min: 35.0     # [A] drivers balk/renege above this expected wait
+  dt_s: 15.0
+  warmup_s: 0.0
+
+interventions:
+  time_shift:
+    price_window: [12, 21]        # hours when the peak tariff applies
+    flexible_fraction: 0.45       # [A] share of drivers on a smart tariff / app
+    night_window: [23, 6]         # target window (wraps midnight)
+    night_peak_hour: 3.0
+    night_sd_h: 2.0
+  economics:
+    canopy_capex_per_stall_AED: 12000.0   # [L] 8k-18k for a steel canopy + PV-ready roof
+    canopy_opex_per_stall_year_AED: 350.0
+    tariff_AED_per_kWh: 0.35              # [L] ADDC/DEWA commercial slab + surcharge
+    value_of_driver_time_AED_per_h: 45.0  # [L] UAE average wage, opportunity cost
+    discount_rate: 0.06
+    horizon_years: 15
+    lost_session_margin_AED: 18.0         # [A] margin per 50 kWh session
+
+calibration:
+  days: 18                    # number of summer days in the synthetic twin dataset
+  noise_C: 0.35               # sensor noise on temperatures
+  noise_kW: 1.2               # power measurement noise
+  discrepancy_C: 0.8          # unmodelled physics (structure error)
+  fit_params:                 # parameters estimated by nonlinear least squares
+    - cabinet.UA_conv_natural_W_per_K
+    - cabinet.fan_ua_ratio
+    - cabinet.C_kJ_per_K
+    - cabinet.k_wind_W_per_K
+    - battery.R0_ohm
+    - battery.chiller_kW_at_35C
+    - battery.chiller_R_th_K_per_W
+  ridge_lambda: 1.0
+  n_bootstrap: 40
+  blackbox_degree: 3
+  holdout_ambient_C: 45.0     # train below this, extrapolate above
+
+sobol:
+  n_samples: 96
